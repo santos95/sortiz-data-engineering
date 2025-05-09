@@ -1,0 +1,5 @@
+# Core Scientific Stack
+numpy
+pandas
+scipy
+matplotlib

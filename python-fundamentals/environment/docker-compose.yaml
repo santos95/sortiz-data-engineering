@@ -1,0 +1,8 @@
+version: '3'
+services:
+  py_dataengineering_env:
+    build: .
+    container_name: py_data_eng_env
+    volumes: 
+      - "./app:/app"
+    tty: true         # Allocate a terminal
