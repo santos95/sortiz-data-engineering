@@ -1,4 +1,4 @@
-from langchain_nvidia_ia_endpoints import ChatNVIDIA
+from langchain_nvidia_ai_endpoints import ChatNVIDIA
 
 base_url = "https://integrate.api.nvidia.com:8000/v1"
 model = 'meta/llama-3.1-8b-instruct'
@@ -64,8 +64,11 @@ def create_faq_document(faq_questions, faq_answers):
         faq_document += f'{response.content}\n\n'
         faq_document += "-" * 30 + '\n\n'
 
+    return faq_document
+
 # populate faq_answer with the answers of that questions 
 faq_answers = llm.batch(faq_questions)
 
-for answer in faq_questions:
-    print(answer.content)
+document = create_faq_document(faq_questions, faq_answers)
+
+print(document)
