@@ -19,5 +19,57 @@ for game in yakuza_games:
 # while loops - are used in scenarios where we dont know how many times we have to iterate to resolve the problem - are commonly used to iterate over a condition - when the condition is true iterates but if is false stop 
 # is not controlled flow iteration 
 
+squares = ['yellow', 'yellow','yellow', 'orange', 'yellow']
+
+
+i = 0 
+yellow_squares = []
+
+# copy the values different from orange - once orange is found the loops end 
+while squares[i] != 'orange':
+    
+    yellow_squares.append(squares[i])
+    i += 1
+
+print(yellow_squares)
+
+
+# iterate through list dates and stop at the year 1973, then print out the number of iterations
+years = [2001, 2022, 2003, 2014, 1973, 2005]
+
+i = 0
+year = years[i]
+
+while (year != 1973): 
+    print(year)
+    i += 1
+    year = years[i]
+
+print(f"to get out of the loop was necessary {i} iterations")
+
+
+# Write a while loop to copy the strings 'orange' of the list squares to the list new_squares. Stop and exit the loop if the value on the list is not 'orange':
+print(' Write a while loop to copy the strings orange of the list squares to the list new_squares. Stop and exit the loop if the value on the list is not orange:')
+squares = ['orange', 'orange', 'blue', 'orange', 'yellow', 'orange', 'red', 'orange']
+
+new_squares = []
+i = 0 
+
+while squares[i] == 'orange':
+    new_squares.append(squares[i])
+    i += 1
+
+for square in new_squares:
+    print(square)
+
+# copy all the orange blocks to new squares
+print('copy all the orange blocks to new squares')
+for square in squares:
+    if square == 'orange':
+        new_squares.append(square)
+    
+
+for square in new_squares:
+    print(square)
 
 
