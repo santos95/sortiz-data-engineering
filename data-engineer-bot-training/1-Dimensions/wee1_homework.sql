@@ -83,7 +83,7 @@ FULL OUTER JOIN last_year AS ly ON af.actor = ly.actor;
 INSERT INTO actors
 WITH years AS (
     SELECT *
-    FROM GENERATE_SERIES(1971, 1972) AS year
+    FROM GENERATE_SERIES(1976, 1977) AS year
 ), last_year AS (
     SELECT *
     FROM actors
@@ -123,6 +123,121 @@ WITH years AS (
             END::quality_class
             ELSE ly.quality_class END AS quality_class,
         CASE WHEN af.year IS NOT NULL THEN TRUE ELSE FALSE END AS is_active,
-        COALESCE(af.year, ly.current_year + 1) AS current_year, *
+        COALESCE(af.year, ly.current_year + 1) AS current_year
 FROM actors_with_films AS af
 FULL OUTER JOIN last_year AS ly ON af.actor = ly.actor;
+
+-- -- 3. **DDL for `actors_history_scd` table:** Create a DDL for an `actors_history_scd` table with the following features:
+-- --     - Implements type 2 dimension modeling (i.e., includes `start_date` and `end_date` fields).
+-- --     - Tracks `quality_class` and `is_active` status for each actor in the `actors` table.
+-- --
+-- 3 - DDL FOR actors_history_scd
+DROP TABLE IF EXISTS actors_history_scd;
+CREATE TABLE actors_history_scd (
+    actor TEXT,
+    quality_class quality_class,
+    is_active boolean,
+    start_year INTEGER,
+    end_year INTEGER,
+    current_year INTEGER
+);
+
+--  4 Backfill query for `actors_history_scd
+INSERT INTO actors_history_scd
+WITH previous AS (
+    SELECT actor,
+         current_year,
+         quality_class,
+         LAG(quality_class, 1) OVER (PARTITION BY actor ORDER BY current_year) AS previous_quality_class,
+         is_active,
+         LAG(is_active, 1) OVER (PARTITION BY actor ORDER BY current_year)     AS previous_is_active
+    FROM actors
+), with_flags AS (
+    SELECT *,
+          CASE  WHEN quality_class <> previous_quality_class THEN 1
+                WHEN is_active <> previous_is_active THEN 1
+                ELSE 0 END         AS change_flag
+   FROM previous
+), with_streaks AS (
+    SELECT  *,
+            SUM(change_flag) OVER (PARTITION BY actor ORDER BY current_year) AS streak_identifier,
+            MAX(current_year) OVER () AS current_year_scd
+    FROM with_flags
+)
+SELECT actor,
+       quality_class,
+       is_active,
+       MIN(current_year) AS start_year,
+       MAX(current_year) AS end_year,
+       current_year_scd
+FROM with_streaks
+GROUP BY actor, streak_identifier, quality_class, is_active, current_year_scd
+ORDER BY actor, start_year;
+
+select *
+from actors_history_scd;
+-- 5. **Incremental query for `actors_history_scd`:** Write an "incremental" query that combines the previous year's SCD data with new incoming data from the `actors` table.
+
+CREATE TYPE actors_scd_type AS (
+    quality_class quality_class,
+    is_active boolean,
+    start_year integer,
+    end_year integer
+)
+
+WITH last_year_scd AS (
+    SELECT *
+    FROM actors_history_scd
+    WHERE current_year = 1976
+    AND end_year = 1976
+), historical_scd AS (
+    SELECT actor,
+           quality_class,
+           is_active,
+           start_year,
+           end_year
+    FROM actors_history_scd
+    WHERE current_year = 1976
+    AND end_year < 1976
+), this_year_data AS (
+    SELECT *
+    FROM actors
+    WHERE current_year = 1977
+), unchanged_records AS (
+SELECT td.actor,
+         td.quality_class,
+         td.is_active,
+         ls.start_year,
+         td.current_year AS end_year
+FROM this_year_data td
+JOIN last_year_scd ls ON ls.actor = td.actor
+WHERE td.quality_class = ls.quality_class
+AND td.is_active = ls.is_active
+), changed_records AS (
+SELECT td.actor,
+     UNNEST(
+         ARRAY[
+             ROW(
+                 ls.quality_class,
+                 ls.is_active,
+                 ls.start_year,
+                 ls.end_year
+                 )::actors_scd_type,
+             ROW(
+                 td.quality_class,
+                 td.is_active,
+                 td.current_year,
+                 td.current_year
+                 )::actors_scd_type
+             ]) AS records
+FROM this_year_data td
+JOIN last_year_scd ls ON ls.actor = td.actor
+WHERE (td.quality_class <> ls.quality_class
+           OR td.is_active <> ls.is_active)
+), unnest_changed_records
+    SELECT actor,
+           (records::actors_scd_type).quality_class,
+           (records::actors_scd_type).is_active,
+           (records::actors_scd_type).start_year,
+           (records::actors_scd_type).end_year
+    FROM changed_records
