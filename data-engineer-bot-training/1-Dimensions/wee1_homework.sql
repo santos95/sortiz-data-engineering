@@ -20,11 +20,15 @@ CREATE TABLE actors (
     PRIMARY KEY (actor, current_year)
 );
 
+SELECT MAX(year), MIN(year)
+FROM actor_films;
+
+
 -- #2 Cumulative table generation query:
 INSERT INTO actors
 WITH years AS (
     SELECT *
-    FROM GENERATE_SERIES(1971, 1972) AS year
+    FROM GENERATE_SERIES(1970, 1971) AS year
 ), last_year AS (
     SELECT *
     FROM actors
@@ -83,7 +87,7 @@ FULL OUTER JOIN last_year AS ly ON af.actor = ly.actor;
 INSERT INTO actors
 WITH years AS (
     SELECT *
-    FROM GENERATE_SERIES(1976, 1977) AS year
+    FROM GENERATE_SERIES(1971, 1972) AS year
 ), last_year AS (
     SELECT *
     FROM actors
@@ -183,61 +187,110 @@ CREATE TYPE actors_scd_type AS (
     is_active boolean,
     start_year integer,
     end_year integer
-)
+);
 
+INSERT INTO actors_history_scd
 WITH last_year_scd AS (
+
     SELECT *
     FROM actors_history_scd
-    WHERE current_year = 1976
-    AND end_year = 1976
+    WHERE current_year = 1971
+    AND end_year = 1971
+
 ), historical_scd AS (
+
     SELECT actor,
            quality_class,
            is_active,
            start_year,
            end_year
     FROM actors_history_scd
-    WHERE current_year = 1976
-    AND end_year < 1976
+    WHERE current_year = 1971
+    AND end_year < 1971
+
 ), this_year_data AS (
+
     SELECT *
     FROM actors
-    WHERE current_year = 1977
+    WHERE current_year = 1972
+
 ), unchanged_records AS (
-SELECT td.actor,
-         td.quality_class,
-         td.is_active,
-         ls.start_year,
-         td.current_year AS end_year
-FROM this_year_data td
-JOIN last_year_scd ls ON ls.actor = td.actor
-WHERE td.quality_class = ls.quality_class
-AND td.is_active = ls.is_active
+
+    SELECT td.actor,
+             td.quality_class,
+             td.is_active,
+             ls.start_year,
+             td.current_year AS end_year
+    FROM this_year_data td
+    JOIN last_year_scd ls ON ls.actor = td.actor
+    WHERE td.quality_class = ls.quality_class
+    AND td.is_active = ls.is_active
+
 ), changed_records AS (
-SELECT td.actor,
-     UNNEST(
-         ARRAY[
-             ROW(
-                 ls.quality_class,
-                 ls.is_active,
-                 ls.start_year,
-                 ls.end_year
-                 )::actors_scd_type,
-             ROW(
-                 td.quality_class,
-                 td.is_active,
-                 td.current_year,
-                 td.current_year
-                 )::actors_scd_type
-             ]) AS records
-FROM this_year_data td
-JOIN last_year_scd ls ON ls.actor = td.actor
-WHERE (td.quality_class <> ls.quality_class
-           OR td.is_active <> ls.is_active)
-), unnest_changed_records
+
+    SELECT td.actor,
+         UNNEST(
+             ARRAY[
+                 ROW(
+                     ls.quality_class,
+                     ls.is_active,
+                     ls.start_year,
+                     ls.end_year
+                     )::actors_scd_type,
+                 ROW(
+                     td.quality_class,
+                     td.is_active,
+                     td.current_year,
+                     td.current_year
+                     )::actors_scd_type
+                 ]) AS records
+    FROM this_year_data td
+    JOIN last_year_scd ls ON ls.actor = td.actor
+    WHERE (td.quality_class <> ls.quality_class
+               OR td.is_active <> ls.is_active)
+
+), unnest_changed_records AS (
+
     SELECT actor,
            (records::actors_scd_type).quality_class,
            (records::actors_scd_type).is_active,
            (records::actors_scd_type).start_year,
            (records::actors_scd_type).end_year
     FROM changed_records
+
+), new_records AS (
+
+    SELECT ts.actor,
+           ts.quality_class,
+           ts.is_active,
+           ts.current_year AS start_year,
+           ts.current_year AS end_year
+    FROM this_year_data ts
+    LEFT JOIN last_year_scd ls ON ls.actor = ts.actor
+    WHERE ls.actor IS NULL
+
+)
+
+SELECT *, 1972 AS current_year FROM (
+
+    SELECT *
+    FROM historical_scd
+
+    UNION ALL
+
+    SELECT *
+    FROM unchanged_records
+
+    UNION ALL
+
+    SELECT *
+    FROM unnest_changed_records
+
+    UNION ALL
+
+    SELECT *
+    FROM new_records
+
+) AS a
+ORDER BY 1;
+
