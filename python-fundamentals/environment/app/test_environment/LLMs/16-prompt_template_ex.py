@@ -30,9 +30,6 @@ statements = [
     "I recently started reading a fascinating book about space exploration."
 ]
 
-
-    
-
 # Define the templates 
 # sentimental analysis template
 sentimental_analysis_temp = ChatPromptTemplate.from_template("""Perform a sentimental analysis of the next piece of a text \
