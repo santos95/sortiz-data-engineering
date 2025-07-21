@@ -177,7 +177,8 @@ WITH users AS (
             date_active @> ARRAY [series_date::DATE]
             THEN POW(2, 32 - (date - series_date::date))::BIGINT
             ELSE 0 END AS BIT(32)) AS placeholder_int_value
-        -- generates the number of days between the start to end day
+        -- generates the number of days between the start to end day - so we can get for example from date the different with series
+        -- wich days since was active respecto to date for example for this date = 2023 01 31 - and was active 24 - 0000001 - seven days
         ,
 
         *
@@ -186,46 +187,53 @@ WITH users AS (
     WHERE user_id = '137925124111668560'
 
 )
-SELECT *
+SELECT user_id,
+       SUM(placeholder_int_value)
 FROM placeholder_ints
+GROUP BY user_id;
 
+-- WE CONVERT THE VALUES OF 2 - INTO BITS, SO FOR EACH DAY IN THE MONTH THE USER IS ACTIVE GETS A 1
+-- SO THE NUMBER OF ONE IS THE DAYS IN WHICH THE USER WAS ACTIVE
+-- IN THAT WAY WE CAN HAVE A COMMULATIVE LIST THAT SHOW USERS ACTIVE
+-- IN THAT WAY WE CAN GET THE MONTLY ACTIVE USERS
+WITH users AS (
 
--- The homework this week will be using the `devices` and `events` dataset
---
--- Construct the following eight queries:
---
--- - A query to deduplicate `game_details` from Day 1 so there's no duplicates
+    SELECT *
+    FROM users_cumulated
+    WHERE date = '2023-01-31'::date
 
+), series AS (
 
-WITH deduplication AS (
+    SELECT *
+    FROM generate_series('2023-01-01'::date, '2023-01-31'::date, INTERVAL '1 Day')
+    AS series_date
 
-    SELECT *,
-          ROW_NUMBER() OVER (PARTITION BY game_id, team_id, player_id) AS row_num
-    FROM game_details
-
-) SELECT *
-FROM deduplication
-WHERE row_num = 1;
-
--- - A DDL for an `user_devices_cumulated` table that has:
---   - a `device_activity_datelist` which tracks a users active days by `browser_type`
---   - data type here should look similar to `MAP<STRING, ARRAY[DATE]>`
---     - or you could have `browser_type` as a column with multiple rows for each user (either way works, just be consistent!)
-SELECT COUNT(*)
-FROM events e
-JOIN devices d on e.device_id = e.device_id;
-
-SELECT *
-FROM devices;
-
-WITH devices_dedup AS (
+), placeholder_ints AS (
 
     SELECT
-    *,
-    ROW_NUMBER() OVER (PARTITION BY device_id) AS row_num
-    FROM devices
+        -- if were active that day - the cast we pass to the next step
+        CASE WHEN
+            date_active @> ARRAY [series_date::DATE]
+            THEN POW(2, 32 - (date - series_date::date))
+            ELSE 0 END AS placeholder_int_value
 
+        ,
 
-) SELECT *
-FROM devices_dedup
-WHERE row_num = 1
+        *
+    FROM users
+    CROSS JOIN series
+--     WHERE user_id = '439578290726747300'
+
+)
+SELECT
+    user_id,
+    CAST(SUM(placeholder_int_value)::BIGINT AS BIT(32)),
+    BIT_COUNT(CAST(SUM(placeholder_int_value)::BIGINT AS BIT(32))) > 0 AS dim_is_montly_active, -- SHOW HOW MANY TIMES WERE ACTIVE IN THE MONTH,
+    BIT_COUNT(CAST('11111110000000000000000000000000' AS BIT(32)) &
+    CAST(SUM(placeholder_int_value)::BIGINT AS BIT(32))) > 0 AS dim_is_weekly_active
+    -- WILL RETURN 1 FOR ANY OF THE 1 THAT ARE PART OF THE FIRST 7 1 - LAST SEVEN DAYS
+    -- THE & AND ALLOW TO ONLY RETURN THE 1s OF THE FIRST 7 BITS
+    -- SO IN THAT WAY THE VALUE ONLY HAVE THE LAST 7 DAYS OF ACTIVITY
+    -- ALLOW TO CREATE A FLAG OF WEEKS ACTIVITY
+FROM placeholder_ints
+GROUP BY user_id;
