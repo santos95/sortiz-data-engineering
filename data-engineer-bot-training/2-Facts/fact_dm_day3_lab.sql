@@ -6,7 +6,7 @@ CREATE TABLE array_metrics(
     metric_name text,
     metric_array REAL[], -- INTEGER ARRAY
     PRIMARY KEY(user_id, month_start, metric_name)
-)
+);
 
 -- TO CREATE ARRAY METRICS
 -- 1 thins about partitions --
@@ -14,7 +14,8 @@ CREATE TABLE array_metrics(
 -- 2 - we need yesterday aggregate - last_month_aggregate
 -- 3 - create and fill the array of values
 
-truncate table array_metrics
+truncate table array_metrics;
+
 
 insert into array_metrics
 with daily_aggregate as (
@@ -23,7 +24,7 @@ with daily_aggregate as (
            event_time::date as date,
            count(1) as num_site_hits
     from events
-    where  event_time::date = '2023-01-02'::date
+    where  event_time::date = '2023-01-03'::date
         and user_id is not null
     group by user_id, event_time::date
 
@@ -40,14 +41,37 @@ select coalesce(d.user_id, y.user_id) as user_id,
        case when y.metric_array is not null
                 then y.metric_array || array[coalesce(d.num_site_hits, 0)]
             when y.metric_array is null
-                then array_fill(0, array[coalesce(d.date - y.month_start, 0)]) || array[coalesce(d.num_site_hits, 0)]
+                then array_fill(0, array[coalesce(d.date - date_trunc('month', date)::date, 0)]) || array[coalesce(d.num_site_hits, 0)]
         end as metric_array
 from daily_aggregate d
 full outer join yesterday_array y on y.user_id = d.user_id
 on conflict (user_id, month_start, metric_name)
 do update set metric_array = excluded.metric_array;
 
+select *
+from array_metrics;
 
+select cardinality(metric_array), count(1)
+from array_metrics
+group by 1;
+
+-- how to make aggregations over array_metrics - to get the sum of values for date
+-- we get back to the daily aggregate - but very fast because we start with a hight aggregated data
+with agg as (
+    select metric_name,
+           month_start,
+           array[
+                sum(metric_array[1]),
+                sum(metric_array[2]),
+                sum(metric_array[3])] as summed_array
+    from array_metrics
+    group by metric_name, month_start
+) select metric_name,
+         month_start + ((index -1)::text || ' day')::interval as adjusted_date,
+         elem as value
+  from agg
+  cross join unnest(agg.summed_array)
+    with ordinality as a(elem, index);
 
 --
 -- - A monthly, reduced fact table DDL `host_activity_reduced`
