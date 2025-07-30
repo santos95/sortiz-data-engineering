@@ -303,7 +303,7 @@ CREATE TABLE hosts_cumulated (
     PRIMARY KEY (host, date)
 );
 
-CREATE TABLE hosts_cumulated2 (
+CREATE TABLE hosts_cumulated (
     host TEXT,
     user_id TEXT,
     activity_datelist DATE[],
