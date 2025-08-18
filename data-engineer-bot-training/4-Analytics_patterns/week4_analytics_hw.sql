@@ -8,44 +8,6 @@
     -- A player that comes out of retirement should be Returned from Retirement
     -- A player that stays out of the league should be Stayed Retired
 
-
-WITH players_data AS (
-
-    SELECT p.player_name,
-           p.current_season,
-           scd.is_active AS season_is_active
-    FROM players p
-    INNER JOIN players_scd scd ON p.player_name = scd.player_name
-    AND p.current_season BETWEEN scd.start_season AND scd.end_season
-    ORDER BY p.player_name, p.current_season
-)
-SELECT p.player_name,
-       p.current_season,
-       CASE
-           WHEN
-            (LAG(p.current_season) OVER (ORDER BY p.player_name, p.current_season) IS NULL OR
-            p.player_name <> LAG(p.player_name) OVER (ORDER BY p.player_name, p.current_season))
-            AND season_is_active THEN 'New'
-           WHEN
-            LAG(p.current_season) OVER (ORDER BY p.player_name, p.current_season) IS NOT NULL
-             AND LAG(p.season_is_active) OVER (ORDER BY p.player_name, p.current_season) = TRUE
-             AND p.season_is_active = FALSE THEN 'Retired'
-           WHEN
-            LAG(p.current_season) OVER (ORDER BY p.player_name, p.current_season) IS NOT NULL
-            AND LAG(p.season_is_active) OVER (ORDER BY p.player_name, p.current_season) = TRUE
-            AND p.season_is_active = TRUE THEN 'Continued Playing'
-           WHEN
-            LAG(p.current_season) OVER (ORDER BY p.player_name, p.current_season) IS NOT NULL
-            AND LAG(p.season_is_active) OVER (ORDER BY p.player_name, p.current_season) = FALSE
-            AND p.season_is_active = TRUE THEN 'Returned from Retirement'
-           WHEN
-            LAG(p.current_season) OVER (ORDER BY p.player_name, p.current_season) IS NOT NULL
-            AND LAG(p.season_is_active) OVER (ORDER BY p.player_name, p.current_season) = FALSE
-            AND p.season_is_active = FALSE THEN 'Stayed Retired'
-        END AS player_status
-
-FROM players_data AS p;
-
 WITH players_data AS (
 
     SELECT p.player_name,
@@ -103,6 +65,7 @@ FROM players_windowed AS p;
         -- Answer questions like who scored the most points in one season?
     -- team
         -- Answer questions like which team has won the most games?
+
 WITH dedup AS (
 
     SELECT
@@ -125,7 +88,7 @@ WITH dedup AS (
         d.game_id,
         d.player_name,
         d.team_id,
-        MAX(d.team_abbreviation) AS team_abbreviation,
+        d.team_abbreviation,
         d.season,
         SUM(COALESCE(pts, 0)) AS total_pts
     FROM dedup AS d
@@ -149,8 +112,9 @@ WITH dedup AS (
                 ELSE 0 END
             ) AS win_game_flag
     FROM dedup d
-   WHERE row_num = 1 
+    WHERE row_num = 1
     GROUP BY d.game_id, d.team_id
+
 )
 SELECT
     COALESCE(g.player_name, '(overall)') AS player_name,
@@ -166,17 +130,12 @@ GROUP BY GROUPING SETS (
     (g.team_abbreviation)
     )
 ORDER BY total_pts DESC, number_of_games_win DESC;
--- A query that uses window functions on game_details to find out the following things:
---
--- What is the most games a team has won in a 90 game stretch?
 
--- How many games in a row did LeBron James score over 10 points a game?
--- Please add these queries into a folder homework/<discord-username>
-- A query that uses window functions on game_details to find out the following things:
--- What is the most games a team has won in a 90 game stretch?
--- How many games in a row did LeBron James score over 10 points a game?
--- Please add these queries into a folder homework/<discord-username>
---
+
+-- - A query that uses window functions on `game_details` to find out the following things:
+--   - What is the most games a team has won in a 90 game stretch?
+--   - How many games in a row did LeBron James score over 10 points a game?
+
 WITH dedup AS (
 
     SELECT
@@ -193,47 +152,86 @@ WITH dedup AS (
        ROW_NUMBER() OVER(PARTITION BY gd.game_id, gd.team_id, gd.player_id ORDER BY g.game_date_est) AS row_num
     FROM game_details AS gd
     INNER JOIN games AS g ON gd.game_id = g.game_id
---     WHERE team_id = 1610612744
+
+
+), leBron_points AS (
+
+    SELECT
+        player_name,
+        game_id,
+        game_date_est,
+        COALESCE(pts, 0) AS pts
+    FROM dedup
+    WHERE row_num = 1
+    AND player_name = 'LeBron James'
+)
+, lb_over_10_pts_streak AS (
+
+    SELECT
+        player_name,
+        game_id,
+        CASE
+            WHEN pts > 10  THEN 1
+            ELSE 0
+        END AS over_10_pts_flag,
+        SUM(CASE WHEN pts <= 10 THEN 1 ELSE 0 END) OVER (ORDER BY game_date_est ROWS UNBOUNDED PRECEDING) streaks
+    FROM leBron_points
+
+
+), total_lb_over_10_pts_streak AS (
+
+    SELECT player_name,
+           streaks,
+           COUNT(1) as total_games_over_10_points_streak
+    FROM lb_over_10_pts_streak
+    WHERE over_10_pts_flag = 1
+    GROUP BY player_name, streaks
 
 ), team_wins AS (
-SELECT
-    DISTINCT
-    dp.game_id,
-    dp.team_id,
-    dp.team_abbreviation,
-    dp.game_date_est,
-   CASE
-        WHEN dp.team_id = dp.home_team_id AND dp.home_team_wins = 1 THEN 1
-        WHEN dp.team_id <> dp.home_team_id AND dp.home_team_wins = 1 THEN 1
-        ELSE 0 END
-    AS flag_wins
 
-FROM dedup AS dp
-WHERE row_num = 1
+    SELECT
+        DISTINCT
+        dp.game_id,
+        dp.team_id,
+        dp.team_abbreviation,
+        dp.game_date_est,
+       CASE
+            WHEN dp.team_id = dp.home_team_id AND dp.home_team_wins = 1 THEN 1
+            WHEN dp.team_id <> dp.home_team_id AND dp.home_team_wins = 0 THEN 1
+            ELSE 0 END
+        AS wins_flag
 
-), wins_90_days  AS (
+    FROM dedup AS dp
+    WHERE row_num = 1
+
+), wins_in_90_days  AS (
 
     SELECT
         tw.team_id,
         tw.team_abbreviation,
         tw.game_date_est,
-        tw.flag_wins,
-        SUM(flag_wins) OVER (PARTITION BY team_id, team_abbreviation ORDER BY tw.game_date_est ROWS BETWEEN 89 PRECEDING AND CURRENT ROW) AS wins_in_last_90_days
+        tw.wins_flag,
+        SUM(wins_flag) OVER (PARTITION BY team_id, team_abbreviation ORDER BY tw.game_date_est ROWS BETWEEN 89 PRECEDING AND CURRENT ROW) AS wins_in_last_90_days
     FROM team_wins tw
 
 ), most_wins_in_90_days AS (
+
     SELECT  w.team_id,
             w.team_abbreviation,
-           MAX(wins_in_last_90_days) AS most_win_games_in_90_days
-    FROM wins_90_days w
-    GROUP BY w.team_id,
-            w.team_abbreviation
+          MAX(wins_in_last_90_days) AS most_win_games_in_90_days
+    FROM wins_in_90_days w
+    GROUP BY w.team_id, w.team_abbreviation
+
 )
 SELECT
-       d.player_name,
-       d.game_date_est,
-       CASE WHEN d.pts > 10 THEN 1 ELSE 0 END AS over_10_points_flag
-FROM dedup d
-WHERE row_num = 1
-AND player_name = 'LeBron James'
+    team_id,
+    team_abbreviation,
+    MAX(most_win_games_in_90_days) AS most_games_won_90_game_stretch,
+    player_name,
+    MAX(total_games_over_10_points_streak) AS LeBron_total_games_in_row_over_10_pts
 
+FROM  most_wins_in_90_days
+CROSS JOIN total_lb_over_10_pts_streak
+GROUP BY  team_id, team_abbreviation, player_name
+ORDER BY most_games_won_90_game_stretch DESC
+LIMIT 1
