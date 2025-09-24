@@ -1,8 +1,8 @@
 from openai import OpenAI
 
 # base url - point to the nvidia site - listen on port 8000 /v1 endpoint
-base_url = "https://integrate.api.nvidia.com:8000/v1"
-api_key = "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"
+base_url = ""
+api_key = ""
 
 # instance the open ai client
 client = OpenAI(base_url = base_url, api_key = api_key)

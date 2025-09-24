@@ -4,8 +4,8 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.prompts import ChatPromptTemplate
 
 # define parameters
-base_url = "https://integrate.api.nvidia.com/v1"
-api_key = "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"
+base_url = ""
+api_key = ""
 model = 'meta/llama-3.1-8b-instruct'
 
 # create the llm langchain instance

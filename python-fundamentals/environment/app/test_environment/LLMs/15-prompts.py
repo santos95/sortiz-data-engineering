@@ -1,6 +1,6 @@
 from langchain_nvidia_ai_endpoints import ChatNVIDIA
 
-base_url = "https://integrate.api.nvidia.com:8000/v1"
+base_url = ""
 model = 'meta/llama-3.1-8b-instruct'
 
 # create model instance 
